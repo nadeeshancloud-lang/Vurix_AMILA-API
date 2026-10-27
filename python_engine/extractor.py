@@ -12,6 +12,7 @@ def options():
     result = {'quiet': True, 'no_warnings': True, 'noprogress': True, 'noplaylist': True,
               'socket_timeout': 20, 'retries': 1, 'extractor_retries': 1,
               'js_runtimes': {'node': {}},
+              'extractor_args': {'youtube': {'player_client': ['default', 'android_vr', 'web_safari']}},
               'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', 'Accept-Language': 'en-US,en;q=0.9'}}
     cookie = os.environ.get('YT_DLP_COOKIE_FILE')
     if cookie and Path(cookie).is_file():
