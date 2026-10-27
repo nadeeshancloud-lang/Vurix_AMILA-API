@@ -94,6 +94,13 @@ def selector(info, format_id, kind):
     return chosen
 
 
+def configure_format(ydl, info, format_id, kind):
+    chosen = selector(info, format_id, kind)
+    ydl.params['format'] = chosen
+    # YoutubeDL compiles its selector at construction; changing params alone is insufficient.
+    ydl.format_selector = ydl.build_format_selector(chosen)
+
+
 def prepare(url, format_id, kind, folder):
     folder = Path(folder).resolve()
     folder.mkdir(parents=True, exist_ok=True)
@@ -108,7 +115,7 @@ def prepare(url, format_id, kind, folder):
             info = next((entry for entry in info['entries'] if entry), None)
         if not info:
             raise ValueError('No media found.')
-        ydl.params['format'] = selector(info, format_id, kind)
+        configure_format(ydl, info, format_id, kind)
         ydl.process_ie_result(info, download=True)
     files = [p for p in folder.glob('source.*') if p.suffix not in ('.part', '.ytdl', '.json') and '.f' not in p.stem]
     if not files:

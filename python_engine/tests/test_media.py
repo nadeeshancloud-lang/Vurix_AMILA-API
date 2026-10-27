@@ -19,6 +19,12 @@ class PlanningTests(unittest.TestCase):
   options=engine.options();self.assertIn('node',options['js_runtimes']);self.assertIn('User-Agent',options['http_headers']);self.assertNotIn(' http_headers',options);self.assertNotIn('nocheckcertificate',options)
  def test_sizes_are_estimates_and_drm_is_excluded(self):
   data=engine.metadata({'duration':10,'formats':[{'format_id':'locked','vcodec':'avc1','acodec':'aac','has_drm':True,'url':'https://example.com/v'}]},'https://example.com/watch');self.assertFalse(data['video_formats']);self.assertFalse(data['audio_formats'])
+ def test_selected_quality_replaces_the_real_yt_dlp_compiled_selector(self):
+  formats=[{'format_id':f,'vcodec':'avc1','acodec':'aac','ext':'mp4','height':h,'url':'https://example.com/'+f} for f,h in [('18',360),('22',720)]]
+  with engine.yt_dlp.YoutubeDL({'quiet':True,'format':'22'}) as ydl:
+   engine.configure_format(ydl,{'formats':formats},'18','video')
+   chosen=ydl._select_formats(formats,ydl.format_selector)
+   self.assertEqual('18',chosen[0]['format_id'])
 class ActualContainerTests(unittest.TestCase):
  def test_transcode_is_real_h264_aac_and_faststart(self):
   import imageio_ffmpeg
@@ -29,6 +35,7 @@ class ActualContainerTests(unittest.TestCase):
    info={'formats':[{'format_id':'v','vcodec':'vp9','acodec':'opus','height':90,'width':160,'url':'https://example.com/v'}]}
    class FakeYdl:
     def __init__(self,options):self.params=options
+    def build_format_selector(self,value):return value
     def __enter__(self):return self
     def __exit__(self,*args):pass
     def extract_info(self,*args,**kwargs):return info

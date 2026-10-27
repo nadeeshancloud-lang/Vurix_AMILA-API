@@ -25,7 +25,8 @@ app.use(express.json({ limit: '1mb' }));
 app.get('/api/v1/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
-    service: 'Vurix Extraction Engine v2.1 verified MP4/MP3',
+    service: 'Vurix Extraction Engine v2.1.1 verified MP4/MP3',
+    revision: process.env.K_REVISION || null,
     timestamp: new Date().toISOString()
   });
 });
