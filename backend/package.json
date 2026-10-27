@@ -1,10 +1,11 @@
 {
   "name": "vurix-api",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "High-Speed Multi-Platform Media Extraction & Streaming REST API",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

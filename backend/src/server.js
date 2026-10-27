@@ -25,7 +25,7 @@ app.use(express.json({ limit: '1mb' }));
 app.get('/api/v1/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
-    service: 'Vurix Extraction Engine v2.0',
+    service: 'Vurix Extraction Engine v2.1 verified MP4/MP3',
     timestamp: new Date().toISOString()
   });
 });
@@ -33,7 +33,7 @@ app.get('/api/v1/health', (req, res) => {
 // 2. Metadata & Format Extraction Endpoint
 app.post('/api/v1/extract', apiLimiter, authMiddleware, handleExtract);
 
-// 3. Direct High-Speed Zero-Disk Download Stream Endpoint
+// 3. Verified compatible MP4/MP3 delivery endpoint
 app.get('/api/v1/stream', apiLimiter, handleStream);
 
 // Global 404 Handler

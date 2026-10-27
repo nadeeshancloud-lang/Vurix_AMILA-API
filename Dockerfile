@@ -1,32 +1,17 @@
-FROM node:20-alpine
-
-# Install Python3, pip, FFmpeg, and ca-certificates
-RUN apk add --no-cache \
-    python3 \
-    py3-pip \
-    ffmpeg \
-    ca-certificates
-
+FROM node:24-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-venv ffmpeg ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-
-# 1. Install Python dependencies (using --break-system-packages for Alpine PEP 668 compatibility)
-COPY python_engine/requirements.txt ./python_engine/requirements.txt
-RUN pip3 install --no-cache-dir --break-system-packages --upgrade -r ./python_engine/requirements.txt
-
-# 2. Install Node.js dependencies
-COPY backend/package*.json ./backend/
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+COPY python_engine/requirements.txt /app/python_engine/requirements.txt
+RUN pip install --no-cache-dir -r /app/python_engine/requirements.txt
+COPY backend/package*.json /app/backend/
 WORKDIR /app/backend
 RUN npm install --omit=dev
-
-# 3. Copy source code
 WORKDIR /app
-COPY python_engine/ ./python_engine/
-COPY backend/ ./backend/
-
-# Set working directory to backend and expose Cloud Run default port
+COPY python_engine/ /app/python_engine/
+COPY backend/ /app/backend/
 WORKDIR /app/backend
-ENV NODE_ENV=production
-ENV PORT=8080
+ENV NODE_ENV=production PORT=8080 MAX_CONCURRENT_DOWNLOADS=1 MAX_MEDIA_BYTES=268435456 PREPARE_TIMEOUT_SECONDS=900
 EXPOSE 8080
-
 CMD ["npm", "start"]
