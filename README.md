@@ -1,4 +1,4 @@
-# VURIX API 2.1.1
+# VURIX API 2.1.2
 
 Fixes adaptive audio/video merging, rejects audio-only sources offered as MP4, verifies real streams, and produces H.264/AAC MP4 (faststart) or real MP3 before sending HTTP success. Existing `/api/v1/extract`, `/api/v1/stream`, and `/api/v1/health` routes remain.
 

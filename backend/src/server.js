@@ -7,6 +7,7 @@ const apiLimiter = require('./middleware/rateLimit.middleware');
 const { handleExtract, handleStream } = require('./controllers/media.controller');
 
 const app = express();
+function memoryLimitMiB(){for(const file of ['/sys/fs/cgroup/memory.max','/sys/fs/cgroup/memory/memory.limit_in_bytes']){try{const n=Number(require('node:fs').readFileSync(file,'utf8').trim());if(Number.isFinite(n)&&n>0&&n<2**50)return Math.round(n/1048576)}catch{}}return null}
 
 // Trust Google Cloud Run reverse proxy for accurate IP rate-limiting and HTTPS protocol detection
 app.set('trust proxy', 1);
@@ -25,8 +26,9 @@ app.use(express.json({ limit: '1mb' }));
 app.get('/api/v1/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
-    service: 'Vurix Extraction Engine v2.1.1 verified MP4/MP3',
+    service: 'Vurix Extraction Engine v2.1.2 verified MP4/MP3',
     revision: process.env.K_REVISION || null,
+    memoryLimitMiB: memoryLimitMiB(),
     timestamp: new Date().toISOString()
   });
 });

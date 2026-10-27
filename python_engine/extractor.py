@@ -9,7 +9,7 @@ import yt_dlp
 
 
 def options():
-    result = {'quiet': True, 'no_warnings': True, 'noplaylist': True,
+    result = {'quiet': True, 'no_warnings': True, 'noprogress': True, 'noplaylist': True,
               'socket_timeout': 20, 'retries': 1, 'extractor_retries': 1,
               'js_runtimes': {'node': {}},
               'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', 'Accept-Language': 'en-US,en;q=0.9'}}
@@ -136,12 +136,12 @@ def prepare(url, format_id, kind, folder):
         command += ['-map', '0:v:0', '-map', '0:a:0?', '-c:v', 'copy' if compatible else 'libx264']
         if not compatible:
             command += ['-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p', '-profile:v', 'main', '-vf', "scale=w='if(gte(iw,ih),min(iw,1920),min(iw,1080))':h='if(gte(iw,ih),min(ih,1080),min(ih,1920))':force_original_aspect_ratio=decrease:force_divisible_by=2"]
-        command += ['-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart']
+        command += ['-threads', '2', '-filter_threads', '2', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart']
     else:
         if not audio:
             raise ValueError('No audio track is available.')
         rate = '128k' if format_id == 'mp3_128' else '192k'
-        command += ['-vn', '-c:a', 'libmp3lame', '-b:a', rate, '-f', 'mp3']
+        command += ['-threads', '2', '-vn', '-c:a', 'libmp3lame', '-b:a', rate, '-f', 'mp3']
     result = subprocess.run(command + [str(output)], capture_output=True, timeout=int(os.environ.get('PREPARE_TIMEOUT_SECONDS', '900')))
     if result.returncode or not output.is_file() or output.stat().st_size == 0:
         raise ValueError('Media conversion failed. Try another available video quality.')

@@ -30,7 +30,7 @@ function runEngine(args,timeoutMs,onCancel=()=>{}){
   child.stdout.on('data',chunk=>{stdout+=chunk.toString();if(stdout.length>4*1024*1024){kill();finish(new Error('Extraction response was too large.'))}});
   child.stderr.on('data',chunk=>{stderr=(stderr+chunk.toString()).slice(-16000)});
   child.on('error',error=>finish(new Error(safeError(error.message))));
-  child.on('close',code=>{if(settled)return;try{const data=JSON.parse(stdout.trim());if(code!==0||!data.success){const error=new Error(safeError(data.error||stderr));error.code=data.code;finish(error)}else finish(null,data)}catch{finish(new Error(safeError(stderr||'The extraction process did not return valid metadata.')))}});
+  child.on('close',(code,signal)=>{if(settled)return;if(signal)return finish(new Error('The extraction worker was terminated ('+signal+'). Check the Cloud Run memory limit or use the on-device engine.'));try{const data=JSON.parse(stdout.trim());if(code!==0||!data.success){const error=new Error(safeError(data.error||stderr));error.code=data.code;finish(error)}else finish(null,data)}catch{finish(new Error(safeError(stderr||('The extraction process returned invalid metadata (exit '+code+', '+stdout.length+' output bytes).'))))}});
  });
 }
 async function extractMetadata(url){const item=cache.get(url);if(item&&item.until>Date.now())return {...item.data,cached:true};const data=await runEngine([url],90000);if(cache.size>=100)cache.delete(cache.keys().next().value);cache.set(url,{until:Date.now()+300000,data});return {...data,cached:false}}
