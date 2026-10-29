@@ -23,7 +23,7 @@ function createMediaService({engine=runEngine,clock=Date.now,tempBase=os.tmpdir(
   for(const [key,e]of prepared)if(e.until<=clock()){prepared.delete(key);e.cached=false;await cleanupPrepared(e)}
  })}
  function snapshotFor(url,id){const alias=canonical(url);const e=snapshots.get(id||aliases.get(alias));return e&&e.until>clock()&&e.aliases.has(alias)?e:null}
- function currentSizes(data,url){const result=structuredClone(data);for(const [name,kind]of [['video_formats','video'],['audio_formats','mp3']])result[name]=(result[name]||[]).map(f=>{const file=prepared.get(mediaKey(result.source_url||result.webpage_url||url,f.format_id,kind));return file&&file.until>clock()?{...f,filesize:file.bytes,filesize_approx:undefined,prepared:true}:f});return result}
+ function currentSizes(data,url,failedFast){const result=structuredClone(data);for(const [name,kind]of [['video_formats','video'],['audio_formats','mp3']])result[name]=(result[name]||[]).map(f=>{if(failedFast?.has(f.format_id)){delete f.fast_download_url;delete f.fast_download_headers;delete f.fast_filesize}const file=prepared.get(mediaKey(result.source_url||result.webpage_url||url,f.format_id,kind));return file&&file.until>clock()?{...f,filesize:file.bytes,filesize_approx:undefined,prepared:true}:f});return result}
  function acquireExtraction(){return new Promise((resolve,reject)=>{const enter=()=>{if(extracting<metadataConcurrency){extracting++;let released=false;resolve(()=>{if(released)return;released=true;extracting--;metadataQueue.shift()?.()})}else if(metadataQueue.length<16)metadataQueue.push(enter);else reject(new Error('The format service is busy. Please try again.'))};enter()})}
  async function retainSnapshot(e){return mutate(async()=>{
   const incoming=e.bytes;
@@ -33,7 +33,7 @@ function createMediaService({engine=runEngine,clock=Date.now,tempBase=os.tmpdir(
   snapshots.set(e.id,e);for(const alias of e.aliases)aliases.set(alias,e.id);return true;
  })}
  async function extractMetadata(url){
-  if(closed)throw new Error('Media service is closing.');await prune();const key=canonical(url);const hit=snapshotFor(url);if(hit)return {...currentSizes(hit.data,url),cached:true,extraction_id:hit.id,extraction_expires_at:hit.until};
+  if(closed)throw new Error('Media service is closing.');await prune();const key=canonical(url);const hit=snapshotFor(url);if(hit)return {...currentSizes(hit.data,url,hit.failedFast),cached:true,extraction_id:hit.id,extraction_expires_at:hit.until};
   if(metadataPending.has(key))return metadataPending.get(key).then(data=>({...currentSizes(data,url),cached:true}));
   const operation=(async()=>{const began=clock();const release=await acquireExtraction();let dir,retained=false;
    try{dir=await directory('info-');const infoFile=path.join(dir,'source.info.json');const data={...await validateFastFormats(await engine([url,'--info-cache',infoFile],90000)),source_url:url};const stat=await fs.stat(infoFile);if(!stat.isFile())throw new Error('Provider metadata snapshot was not written.');if(stat.size>snapshotBytes)return {...structuredClone(data),cached:false,timings:{metadata_ms:clock()-began}};
@@ -85,12 +85,29 @@ function createMediaService({engine=runEngine,clock=Date.now,tempBase=os.tmpdir(
  }
  async function streamFastDownload({url,formatId,extractionId,filename,req,res}){
   if(closed)throw new Error('Media service is closing.');
-  // The original source and opaque handle both have to match. No client-supplied target is used.
-  const snapshot=extractionId?snapshotFor(url,extractionId):null;
-  const format=snapshot?.data.video_formats?.find(item=>item.format_id===formatId&&item.fast_download_url);
-  if(!snapshot||!format){const error=new Error('This quick connection expired. Use the verified download route.');error.code='relay_expired';throw error}
+  const expired=()=>{const error=new Error('This quick connection is not available for that source and format.');error.code='relay_expired';return error};
+  if(typeof extractionId!=='string'||!/^[0-9a-f-]{36}$/.test(extractionId))throw expired();
+  const retained=snapshots.get(extractionId);if(retained&&!retained.aliases.has(canonical(url)))throw expired();
+  const known=retained?.data.video_formats?.find(item=>item.format_id===formatId);if(retained&&!known)throw expired();
+  const fallback=async()=>{
+   if(closed||req.aborted||res.destroyed||res.headersSent||res.writableFinished)throw new Error('Transfer cancelled.');
+   for(const name of ['Content-Length','Content-Range','ETag','Last-Modified','Content-Disposition','Accept-Ranges','X-Clip-Sevan-Delivery'])res.removeHeader(name);
+   res.statusCode=200;res.setHeader('X-Clip-Sevan-Delivery','verified-fallback');
+   return streamDirectDownload({url,formatId,extractionId,filename,type:'video',req,res});
+  };
+  // Evicted/expired snapshots use the same verified route as /stream. An existing
+  // handle bound to a different source, or a wrong format, is still rejected above.
+  const snapshot=snapshotFor(url,extractionId);if(!snapshot)return fallback();
+  const format=known;
+  if(!format?.fast_download_url&&!snapshot.failedFast?.has(formatId))throw expired();
+  const cached=prepared.get(mediaKey(snapshot.data.source_url||url,formatId,'video'));
+  if(snapshot.failedFast?.has(formatId)||cached&&cached.until>clock())return fallback();
   snapshot.users++;streams++;
-  try{await fastRelay.relay({format,filename,req,res,maxBytes:maxMediaBytes})}
+  try{try{await fastRelay.relay({format,filename,req,res,maxBytes:maxMediaBytes})}catch(error){
+   if(error.code!=='relay_unavailable'||closed||req.aborted||res.destroyed||res.headersSent||res.writableFinished)throw error;
+   (snapshot.failedFast||(snapshot.failedFast=new Set())).add(formatId);
+   await fallback();
+  }}
   finally{try{snapshot.users--;if(snapshot.expired&&!snapshot.users)await remove(snapshot.dir)}finally{streams--;if(!streams)for(const notify of idle.splice(0))notify()}}
  }
  const timer=cleanupIntervalMs>0?setInterval(()=>{void prune().catch(()=>{})},cleanupIntervalMs):null;timer?.unref();
