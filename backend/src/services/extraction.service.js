@@ -2,13 +2,15 @@ const path=require('node:path');
 const fs=require('node:fs/promises');
 const os=require('node:os');
 const {randomUUID,createHash}=require('node:crypto');
+const {createFastRelay}=require('./fast-relay');
 const {runEngine,validateUrl,publicAddress,safeError,validateFastFormats}=require('./provider-engine');
 // Some supported extractors identify the media inside the fragment; preserve it.
 function canonical(value){return new URL(value).toString()}
 function mediaKey(url,formatId,kind){return createHash('sha256').update(canonical(url)+'\n'+kind+'\n'+(formatId||'best')).digest('hex')}
 
 /** Private snapshots and verified immutable outputs avoid repeating provider work. */
-function createMediaService({engine=runEngine,clock=Date.now,tempBase=os.tmpdir(),snapshotTtlMs=120000,snapshotEntries=32,snapshotBytes=24*1024*1024,preparedTtlMs=120000,preparedEntries=4,preparedBytes=96*1024*1024,maxMediaBytes=Number(process.env.MAX_MEDIA_BYTES)||256*1024*1024,maxOutputBytes=Math.max(maxMediaBytes,512*1024*1024),concurrency=Math.max(1,Math.min(4,Number(process.env.MAX_CONCURRENT_DOWNLOADS)||1)),metadataConcurrency=2,cleanupIntervalMs=30000}={}){
+function createMediaService({engine=runEngine,clock=Date.now,tempBase=os.tmpdir(),snapshotTtlMs=120000,snapshotEntries=32,snapshotBytes=24*1024*1024,preparedTtlMs=120000,preparedEntries=4,preparedBytes=96*1024*1024,maxMediaBytes=Number(process.env.MAX_MEDIA_BYTES)||256*1024*1024,maxOutputBytes=Math.max(maxMediaBytes,512*1024*1024),concurrency=Math.max(1,Math.min(4,Number(process.env.MAX_CONCURRENT_DOWNLOADS)||1)),metadataConcurrency=2,cleanupIntervalMs=30000,relayOptions={}}={}){
+ const fastRelay=createFastRelay(relayOptions);
  const snapshots=new Map(),aliases=new Map(),metadataPending=new Map(),prepared=new Map(),preparing=new Map(),outputs=new Set();let rootPromise,active=0,extracting=0,streams=0,reservedBytes=0,closed=false,cacheMutation=Promise.resolve();const queue=[],metadataQueue=[],idle=[];
  const mutate=fn=>{const operation=cacheMutation.then(fn);cacheMutation=operation.catch(()=>{});return operation};
  const root=()=>rootPromise||(rootPromise=fs.mkdtemp(path.join(tempBase,'clip-sevan-cache-')));
@@ -81,9 +83,19 @@ function createMediaService({engine=runEngine,clock=Date.now,tempBase=os.tmpdir(
    await new Promise((resolve,reject)=>res.download(e.file,filename,{acceptRanges:e.cached,cacheControl:false,lastModified:true},error=>error?reject(error):resolve()));
   }finally{try{req.removeListener('aborted',abort);res.removeListener('close',abort);detach();await lease?.release()}finally{streams--;if(!streams)for(const notify of idle.splice(0))notify()}}
  }
+ async function streamFastDownload({url,formatId,extractionId,filename,req,res}){
+  if(closed)throw new Error('Media service is closing.');
+  // The original source and opaque handle both have to match. No client-supplied target is used.
+  const snapshot=extractionId?snapshotFor(url,extractionId):null;
+  const format=snapshot?.data.video_formats?.find(item=>item.format_id===formatId&&item.fast_download_url);
+  if(!snapshot||!format){const error=new Error('This quick connection expired. Use the verified download route.');error.code='relay_expired';throw error}
+  snapshot.users++;streams++;
+  try{await fastRelay.relay({format,filename,req,res,maxBytes:maxMediaBytes})}
+  finally{try{snapshot.users--;if(snapshot.expired&&!snapshot.users)await remove(snapshot.dir)}finally{streams--;if(!streams)for(const notify of idle.splice(0))notify()}}
+ }
  const timer=cleanupIntervalMs>0?setInterval(()=>{void prune().catch(()=>{})},cleanupIntervalMs):null;timer?.unref();
- async function close(){closed=true;if(timer)clearInterval(timer);for(const job of preparing.values()){job.cancelled=true;job.cancel()}await Promise.allSettled([...preparing.values()].map(job=>job.promise));await Promise.allSettled([...metadataPending.values()]);if(streams)await new Promise(resolve=>idle.push(resolve));await cacheMutation;for(const e of snapshots.values()){e.expired=true;if(!e.users)await remove(e.dir)}snapshots.clear();aliases.clear();for(const e of prepared.values()){e.cached=false;await cleanupPrepared(e)}prepared.clear();if(rootPromise){const parent=await rootPromise;if(path.dirname(parent)!==path.resolve(tempBase)||!path.basename(parent).startsWith('clip-sevan-cache-'))throw new Error('Invalid cache root.');await fs.rm(parent,{recursive:true,force:true})}outputs.clear();reservedBytes=0}
- return {extractMetadata,streamDirectDownload,close};
+ async function close(){closed=true;fastRelay.close();if(timer)clearInterval(timer);for(const job of preparing.values()){job.cancelled=true;job.cancel()}await Promise.allSettled([...preparing.values()].map(job=>job.promise));await Promise.allSettled([...metadataPending.values()]);if(streams)await new Promise(resolve=>idle.push(resolve));await cacheMutation;for(const e of snapshots.values()){e.expired=true;if(!e.users)await remove(e.dir)}snapshots.clear();aliases.clear();for(const e of prepared.values()){e.cached=false;await cleanupPrepared(e)}prepared.clear();if(rootPromise){const parent=await rootPromise;if(path.dirname(parent)!==path.resolve(tempBase)||!path.basename(parent).startsWith('clip-sevan-cache-'))throw new Error('Invalid cache root.');await fs.rm(parent,{recursive:true,force:true})}outputs.clear();reservedBytes=0}
+ return {extractMetadata,streamDirectDownload,streamFastDownload,close};
 }
 const service=createMediaService();
 module.exports={...service,createMediaService,validateUrl,publicAddress,safeError};

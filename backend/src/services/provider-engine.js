@@ -5,7 +5,7 @@ const net=require('node:net');
 const script=path.resolve(__dirname,'../../../python_engine/extractor.py');
 function publicAddress(address){
  if(net.isIP(address)===4){const p=address.split('.').map(Number);return !(p[0]===0||p[0]===10||p[0]===127||p[0]>=224||p[0]===169&&p[1]===254||p[0]===172&&p[1]>=16&&p[1]<=31||p[0]===192&&p[1]===168||p[0]===100&&p[1]>=64&&p[1]<=127)}
- const a=address.toLowerCase();if(a.startsWith('::ffff:'))return publicAddress(a.slice(7));return net.isIP(a)===6&&a!=='::'&&a!=='::1'&&!a.startsWith('fc')&&!a.startsWith('fd')&&!a.startsWith('fe8')&&!a.startsWith('fe9')&&!a.startsWith('fea')&&!a.startsWith('feb');
+ const a=address.toLowerCase();if(a.startsWith('::ffff:'))return publicAddress(a.slice(7));return net.isIP(a)===6&&a!=='::'&&a!=='::1'&&!a.startsWith('fc')&&!a.startsWith('fd')&&!a.startsWith('fe8')&&!a.startsWith('fe9')&&!a.startsWith('fea')&&!a.startsWith('feb')&&!a.startsWith('ff');
 }
 async function validateUrl(value,lookup=dns.lookup){
  if(typeof value!=='string'||value.length>8192)throw new Error('Provide a public video URL.');
