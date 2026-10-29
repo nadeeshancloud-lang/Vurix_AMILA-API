@@ -1,6 +1,6 @@
 {
   "name": "clip-sevan-api",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Clip Sevan public media extraction and verified MP4/MP3 preparation",
   "main": "src/server.js",
   "scripts": {

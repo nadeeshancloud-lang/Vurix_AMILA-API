@@ -26,7 +26,7 @@ app.use(express.json({ limit: '1mb' }));
 app.get('/api/v1/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
-    service: 'Clip Sevan Extraction Engine v2.2.0 verified MP4/MP3',
+    service: 'Clip Sevan Extraction Engine v2.3.0 verified MP4/MP3',
     revision: process.env.K_REVISION || null,
     memoryLimitMiB: memoryLimitMiB(),
     timestamp: new Date().toISOString()

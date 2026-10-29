@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from urllib.parse import urlsplit
 import yt_dlp
 
 
@@ -36,6 +37,48 @@ def height(f):
 
 def h264(f):
     return str(f.get('vcodec', '')).startswith(('avc', 'h264'))
+
+
+def fast_delivery(selected, info):
+    """Offer only an already-muxed, compatible HTTPS MP4; the app still verifies it."""
+    url = selected.get('url')
+    if not isinstance(url, str) or len(url) > 8192 or '\r' in url or '\n' in url:
+        return {}
+    try:
+        address = urlsplit(url)
+        if address.scheme != 'https' or not address.hostname or address.username or address.password:
+            return {}
+    except ValueError:
+        return {}
+    width, height_px = selected.get('width') or 0, selected.get('height') or 0
+    if (selected.get('ext') != 'mp4' or not h264(selected)
+            or not str(selected.get('acodec', '')).startswith(('mp4a', 'aac'))
+            or selected.get('has_drm') or selected.get('fragments')
+            or selected.get('manifest_url') or selected.get('hls_media_playlist_data')
+            or selected.get('requested_formats') or selected.get('requested_downloads')
+            or selected.get('is_live') or info.get('is_live')
+            or address.path.lower().endswith(('.m3u8', '.mpd'))
+            or selected.get('protocol', address.scheme) != 'https'
+            or not isinstance(width, (int, float)) or not isinstance(height_px, (int, float))
+            or min(width, height_px) <= 0 or max(width, height_px) > 1920
+            or min(width, height_px) > 1080):
+        return {}
+    # Never copy a server session into a public metadata response.
+    allowed = {'user-agent': 'User-Agent', 'referer': 'Referer', 'origin': 'Origin',
+               'accept': 'Accept', 'accept-language': 'Accept-Language'}
+    headers = {}
+    for values in [info.get('http_headers'), selected.get('http_headers')]:
+        if not isinstance(values, dict):
+            continue
+        for key, value in values.items():
+            name = allowed.get(str(key).lower())
+            if name and isinstance(value, str) and len(value) <= 4096 and '\r' not in value and '\n' not in value:
+                headers[name] = value
+    result = {'fast_download_url': url, 'fast_download_headers': headers}
+    size = selected.get('filesize')
+    if isinstance(size, (int, float)) and not isinstance(size, bool) and 0 < size < 2**53:
+        result['fast_filesize'] = int(size)
+    return result
 
 
 def estimated_video_size(selected, formats, duration):
@@ -84,7 +127,8 @@ def metadata(info, url):
                        'ext': 'mp4', 'vcodec': 'avc1', 'acodec': 'mp4a' if any_audio else 'none',
                        'source_vcodec': f.get('vcodec'), 'source_acodec': f.get('acodec'),
                        'height': quality, 'has_audio': any_audio, 'needs_merge': not is_audio(f),
-                       'filesize': None, 'filesize_approx': estimated_video_size(f, formats, duration), 'fps': f.get('fps')})
+                       'filesize': None, 'filesize_approx': estimated_video_size(f, formats, duration), 'fps': f.get('fps'),
+                       **fast_delivery(f, info)})
     audios = [{'format_id': f'mp3_{rate}', 'quality': f'MP3 {rate} kbps', 'ext': 'mp3', 'vcodec': 'none', 'acodec': 'mp3',
                'abr': rate, 'filesize_approx': int(duration * rate * 1000 / 8) if duration else None} for rate in (192, 128)] if any_audio else []
     return {'success': True, 'platform': info.get('extractor_key', 'Unknown'), 'id': info.get('id'),

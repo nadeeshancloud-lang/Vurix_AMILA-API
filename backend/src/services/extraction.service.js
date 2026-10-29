@@ -2,7 +2,7 @@ const path=require('node:path');
 const fs=require('node:fs/promises');
 const os=require('node:os');
 const {randomUUID,createHash}=require('node:crypto');
-const {runEngine,validateUrl,publicAddress,safeError}=require('./provider-engine');
+const {runEngine,validateUrl,publicAddress,safeError,validateFastFormats}=require('./provider-engine');
 // Some supported extractors identify the media inside the fragment; preserve it.
 function canonical(value){return new URL(value).toString()}
 function mediaKey(url,formatId,kind){return createHash('sha256').update(canonical(url)+'\n'+kind+'\n'+(formatId||'best')).digest('hex')}
@@ -34,7 +34,7 @@ function createMediaService({engine=runEngine,clock=Date.now,tempBase=os.tmpdir(
   if(closed)throw new Error('Media service is closing.');await prune();const key=canonical(url);const hit=snapshotFor(url);if(hit)return {...currentSizes(hit.data,url),cached:true,extraction_id:hit.id,extraction_expires_at:hit.until};
   if(metadataPending.has(key))return metadataPending.get(key).then(data=>({...currentSizes(data,url),cached:true}));
   const operation=(async()=>{const began=clock();const release=await acquireExtraction();let dir,retained=false;
-   try{dir=await directory('info-');const infoFile=path.join(dir,'source.info.json');const data={...await engine([url,'--info-cache',infoFile],90000),source_url:url};const stat=await fs.stat(infoFile);if(!stat.isFile())throw new Error('Provider metadata snapshot was not written.');if(stat.size>snapshotBytes)return {...structuredClone(data),cached:false,timings:{metadata_ms:clock()-began}};
+   try{dir=await directory('info-');const infoFile=path.join(dir,'source.info.json');const data={...await validateFastFormats(await engine([url,'--info-cache',infoFile],90000)),source_url:url};const stat=await fs.stat(infoFile);if(!stat.isFile())throw new Error('Provider metadata snapshot was not written.');if(stat.size>snapshotBytes)return {...structuredClone(data),cached:false,timings:{metadata_ms:clock()-began}};
     const e={id:randomUUID(),dir,infoFile,bytes:stat.size,until:clock()+snapshotTtlMs,users:0,aliases:new Set([key]),data:structuredClone(data)};if(data.webpage_url){const original=new URL(url),provider=new URL(data.webpage_url);if(!original.hash||original.hash===provider.hash)e.aliases.add(canonical(data.webpage_url))}
     retained=await retainSnapshot(e);
     return {...currentSizes(data,url),cached:false,...(retained?{extraction_id:e.id,extraction_expires_at:e.until}:{}),timings:{metadata_ms:clock()-began}};

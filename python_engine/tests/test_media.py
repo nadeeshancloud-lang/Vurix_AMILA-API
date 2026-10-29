@@ -29,6 +29,21 @@ class PlanningTests(unittest.TestCase):
    engine.configure_format(ydl,{'formats':formats},'18','video')
    chosen=ydl._select_formats(formats,ydl.format_selector)
    self.assertEqual('18',chosen[0]['format_id'])
+ def test_progressive_compatible_mp4_has_optional_direct_delivery_without_changing_proxy_sizes(self):
+  selected={'format_id':'p','url':'https://cdn.example.com/v.mp4?signature=public','ext':'mp4','protocol':'https','vcodec':'avc1.64001f','acodec':'mp4a.40.2','width':1280,'height':720,'filesize':876543}
+  data=engine.metadata({'formats':[selected]},'https://example.com/watch');choice=data['video_formats'][0]
+  self.assertEqual(selected['url'],choice['fast_download_url']);self.assertEqual(876543,choice['fast_filesize']);self.assertIsNone(choice['filesize']);self.assertEqual(876543,choice['filesize_approx'])
+  self.assertFalse(any('fast_download_url' in f for f in data['audio_formats']))
+ def test_fast_delivery_never_offers_separate_tracks_manifests_drm_or_unknown_compatibility(self):
+  base={'format_id':'p','url':'https://cdn.example.com/v.mp4','ext':'mp4','protocol':'https','vcodec':'avc1.64001f','acodec':'mp4a.40.2','width':1280,'height':720}
+  cases=[{'vcodec':'hevc'},{'acodec':'opus'},{'acodec':'none'},{'has_drm':True},{'protocol':'m3u8_native'},{'protocol':'http_dash_segments'},{'fragments':[{'url':'https://cdn.example.com/p'}]},{'manifest_url':'https://cdn.example.com/manifest.mpd'},{'url':'https://cdn.example.com/manifest.m3u8'},{'ext':'webm'},{'width':3840,'height':2160},{'height':0},{'width':None},{'url':'http://cdn.example.com/v.mp4'},{'url':'https://secret:password@cdn.example.com/v.mp4'},{'is_live':True}]
+  for changes in cases:
+   with self.subTest(changes=changes):self.assertEqual({},engine.fast_delivery(base|changes,{}))
+  self.assertEqual({},engine.fast_delivery(base,{'is_live':True}))
+ def test_fast_headers_are_allowlisted_and_server_session_credentials_are_never_exposed(self):
+  selected={'url':'https://cdn.example.com/v.mp4','ext':'mp4','vcodec':'avc1','acodec':'aac','width':720,'height':1280,'http_headers':{'user-agent':'Format agent','Cookie':'private','Authorization':'Bearer secret','X-Secret':'private','Referer':'https://example.com/watch','Origin':'https://example.com\r\nCookie: injected'}}
+  offered=engine.fast_delivery(selected,{'http_headers':{'User-Agent':'Common agent','Accept-Language':'en','Cookie':'session'}})
+  self.assertEqual({'User-Agent':'Format agent','Accept-Language':'en','Referer':'https://example.com/watch'},offered['fast_download_headers']);self.assertNotIn('fast_filesize',offered)
 class ActualContainerTests(unittest.TestCase):
  def conversion(self,snapshot=False,compatible=False,expired=False):
   import imageio_ffmpeg
