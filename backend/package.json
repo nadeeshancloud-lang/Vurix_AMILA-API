@@ -1,7 +1,7 @@
 {
-  "name": "vurix-api",
-  "version": "2.1.3",
-  "description": "High-Speed Multi-Platform Media Extraction & Streaming REST API",
+  "name": "clip-sevan-api",
+  "version": "2.2.0",
+  "description": "Clip Sevan public media extraction and verified MP4/MP3 preparation",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",

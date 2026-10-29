@@ -26,7 +26,7 @@ app.use(express.json({ limit: '1mb' }));
 app.get('/api/v1/health', (req, res) => {
   res.status(200).json({
     status: 'ok',
-    service: 'Vurix Extraction Engine v2.1.3 verified MP4/MP3',
+    service: 'Clip Sevan Extraction Engine v2.2.0 verified MP4/MP3',
     revision: process.env.K_REVISION || null,
     memoryLimitMiB: memoryLimitMiB(),
     timestamp: new Date().toISOString()
@@ -49,5 +49,5 @@ app.use((req, res) => {
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[VURIX API] Server listening on http://0.0.0.0:${PORT}`);
+  console.log(`[Clip Sevan API] Server listening on http://0.0.0.0:${PORT}`);
 });
