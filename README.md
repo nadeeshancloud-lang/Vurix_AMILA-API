@@ -1,4 +1,4 @@
-# Clip Sevan API 2.3.0
+# Clip Sevan API 2.3.1
 
 Public media extraction and verified H.264/AAC MP4 or real MP3 preparation. Existing `/api/v1/extract`, `/api/v1/stream`, and `/api/v1/health` routes and the existing service URL remain compatible.
 
@@ -10,7 +10,7 @@ Public media extraction and verified H.264/AAC MP4 or real MP3 preparation. Exis
 - H.264 video and compatible AAC audio are copied into MP4 with faststart; encoding is used only when needed. The file's real streams are still verified before HTTP success.
 - Already prepared files are reusable for two minutes, bounded to four files / 96 MiB. Immutable file identities support safe ETags and Range resume. Active readers keep their file until they finish. Total cached and in-flight ready outputs also use a 512 MiB budget with per-preparation size reservation; resource pressure returns an explicit busy response instead of accumulating unbounded memory-backed files. Simultaneous requests for the same output share preparation; one disconnected client does not cancel another's download.
 - Metadata sizes are explicitly approximate when based on source lengths/bitrates. CRF video conversion size remains unknown before encoding. A currently cached verified output reports its exact byte length.
-- Compatible progressive MP4 choices may additionally include `fast_download_url`, `fast_download_headers`, and a known source `fast_filesize`. New clients can download those already-muxed H.264/AAC files directly, avoiding the server's full-file preparation wait, and validate the result on the device before marking it complete. This option requires HTTPS/public DNS, known dimensions within 1920×1080 (either orientation), no DRM, no manifest/fragments, and no separate-track merge. Only User-Agent, Referer, Origin, Accept and Accept-Language headers can be published; server cookies/authorization are never copied. The original verified `download_url` remains available and unchanged for older clients or fallback. MP3 always uses actual conversion; AAC is never renamed to MP3. Signed direct URLs can expire or depend on the source network, so clients must retain their normal validated fallback.
+- Compatible progressive MP4 choices may additionally include `fast_download_url`, empty client `fast_download_headers`, and a known source `fast_filesize`. The URL points to `/api/v1/fast-stream`, a source-bound relay using the original URL, extraction handle and format ID. It streams the already-muxed H.264/AAC source from the server connection without staging the entire file; the app validates the saved media before completion. Eligible sources require public HTTPS, known dimensions within 1920×1080 (either orientation), no DRM/manifests/fragments and no separate-track merge. The relay pins public DNS on each redirect, limits concurrency to four, applies connection/idle/overall deadlines and enforces the file-size cap without buffering whole files. CDN addresses and headers stay private. Range resume is advertised only with a strong ETag or valid Last-Modified value. Expired handles return 410; the original verified `download_url` stays available for fallback and older clients. MP3 still uses real conversion; AAC is never renamed to MP3.
 
 The first request still requires provider extraction, and the first uncached MP4/MP3 still requires transfer and any necessary conversion. These changes remove duplicate work; they do not promise instant responses, a fixed network speed or availability of every URL. Metadata and prepared caches are per instance and temporary, so a cold instance or expired cache needs fresh work.
 
@@ -18,7 +18,7 @@ The first request still requires provider extraction, and the first uncached MP4
 
 ## Deploy to the existing Cloud Run service
 
-A repository push only deploys when the owner's continuous-deployment trigger is configured. Verify health version 2.3.0 and an actual completed media download after deployment; a source-control update alone does not prove the running revision changed.
+A repository push only deploys when the owner's continuous-deployment trigger is configured. Verify health version 2.3.1 and an actual completed media download after deployment; a source-control update alone does not prove the running revision changed.
 
 From this directory, authenticated to the service owner's project:
 
@@ -43,4 +43,4 @@ cd backend
 npm test
 ```
 
-Tests cover real MP4 conversion/full decoding and H.264/AAC copying, snapshot reuse without another extraction, one-time expired-link refresh, metadata isolation/token binding/expiry, immutable prepared-file reuse, cancellation shared by multiple clients, safe reader lifetime and cache bounds. Cache transport tests use controlled files; full codec validation is separately exercised by actual FFmpeg tests. Deployment and live-provider checks remain separate.
+Tests cover real MP4 conversion/full decoding and H.264/AAC copying, snapshot reuse without another extraction, one-time expired-link refresh, metadata isolation/token binding/expiry, immutable prepared-file reuse, cancellation shared by multiple clients, safe reader lifetime and cache bounds. Relay tests cover pinned DNS, redirects, source-bound handles, byte limits, deadlines, disconnects, range validation and safe response headers. Cache/relay transport tests use controlled files; full codec validation is separately exercised by actual FFmpeg tests. Deployment and live-provider checks remain separate.
